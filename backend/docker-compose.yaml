@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:18.6-alpine
+    container_name: auction-system-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-luis_admin}
+      - "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      - POSTGRES_DB=${POSTGRES_DB:-auction_system_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-luis_admin} -d ${POSTGRES_DB:-auction_system_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auction-system-backend:
+    image: auction-system-backend
+    container_name: auction-system-backend
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8001:7860"
+    env_file:
+      - .env
+    environment:
+      - "DATABASE_URL=postgres://${POSTGRES_USER:-luis_admin}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-auction_system_db}"
+    depends_on:
+      db:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync+restart
+          path: .
+          target: /app
+          ignore:
+            - .venv/
+            - __pycache__/
+            - uv.lock
+            - pyproject.toml
+            - Dockerfile
+            - scripts/entrypoint.sh
+            - staticfiles/
+
+        - action: rebuild
+          path: ./uv.lock
+
+        - action: rebuild
+          path: ./pyproject.toml
+
+        - action: rebuild
+          path: ./Dockerfile
+
+        - action: rebuild
+          path: ./scripts/entrypoint.sh
+
+volumes:
+  postgres_data:
