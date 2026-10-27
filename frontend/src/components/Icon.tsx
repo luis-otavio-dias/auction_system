@@ -1,0 +1,3 @@
+export default function Icon({ name }: { name: 'search' | 'bell' | 'tune' | 'close' | 'menu' }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{name === 'search' ? <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></> : name === 'bell' ? <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></> : name === 'tune' ? <><path d="M4 6h16M4 12h16M4 18h16" /><path d="M8 4v4M16 10v4M10 16v4" /></> : name === 'menu' ? <path d="M3 6h18M3 12h18M3 18h18" /> : <path d="m6 6 12 12M18 6 6 18" />}</svg>
+}
