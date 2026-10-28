@@ -111,7 +111,8 @@ django_settings_module = "core.settings"
 addopts = "-s --color=yes --tb=short"
 DJANGO_SETTINGS_MODULE = "core.settings"
 testpaths = ["tests"]
-env_files = ".env"
+# First file wins for each variable; real env vars always take precedence.
+env_files = [".env", "tests/.env.test"]
 filterwarnings = [
   "ignore:No directory at.*staticfiles:UserWarning",
 ]
