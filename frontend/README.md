@@ -88,13 +88,19 @@ mesma versão; saltos disparam uma busca de snapshot. O cenário de um evento no
 chegar antes de uma resposta HTTP antiga é coberto pelo guard de versão e pelos
 testes.
 
+## Tema claro e escuro
+
+O cabeçalho tem um botão para alternar entre os temas claro e escuro. A escolha é salva em `localStorage` na chave `auction-theme` e passa a vencer a preferência do sistema. Na primeira visita, o tema segue `prefers-color-scheme`; enquanto não houver escolha salva, mudanças no sistema são aplicadas em tempo real.
+
+Um script em `index.html` aplica o tema antes do primeiro paint para evitar flash. As cores ficam em tokens semânticos em `src/index.css`, com a paleta escura definida em `:root[data-theme="dark"]`. Em telas pequenas, o controle passa para o menu de navegação.
+
 ## Estrutura
 
 ```text
 src/
 ├── api/          # cliente HTTP, decoders e serviços tipados
 ├── components/   # layout, UI compartilhada e catálogo
-├── context/      # sessão, notificações e toasts
+├── context/      # sessão, tema, notificações e toasts
 ├── domain/       # state_version e mensagens de erro de lance
 ├── hooks/        # countdown e sala do lote
 ├── pages/        # rotas da aplicação
@@ -103,7 +109,7 @@ src/
 ├── utils/        # formatação, erros e identificadores
 ├── App.tsx       # rotas e providers
 ├── main.tsx      # inicialização
-└── index.css     # estilos globais
+└── index.css     # estilos globais e tokens de tema
 ```
 
 O catálogo estático legado (`Home`, `LotCard`, `BidModal`, `auctionService` e

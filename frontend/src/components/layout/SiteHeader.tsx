@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, useNavigate } from 'react-router-dom'
 import type { Role } from '../../types/api'
 import { useAuth } from '../../context/auth-context'
+import { useTheme } from '../../context/theme-context'
 import Icon from '../Icon'
 import NotificationBell from './NotificationBell'
 
@@ -12,9 +13,11 @@ const roleLabels: Record<Role, string> = {
 
 export default function SiteHeader() {
   const { user, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = () => setMenuOpen(false)
+  const nextTheme = theme === 'dark' ? 'claro' : 'escuro'
   const handleLogout = async () => {
     await logout()
     closeMenu()
@@ -31,8 +34,15 @@ export default function SiteHeader() {
           <NavLink to="/meus-arremates" className={({ isActive }) => isActive ? 'active' : ''} onClick={closeMenu}>Meus arremates</NavLink>
           {seller && <NavLink to="/painel" className={({ isActive }) => isActive ? 'active' : ''} onClick={closeMenu}>Painel do leiloeiro</NavLink>}
           {user === null && <NavLink to="/cadastro" className={({ isActive }) => isActive ? 'active' : ''} onClick={closeMenu}>Criar conta</NavLink>}
+          <button className="theme-toggle theme-toggle-menu" type="button" aria-label={`Ativar tema ${nextTheme}`} aria-pressed={theme === 'dark'} onClick={() => { toggleTheme(); closeMenu() }}>
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+            <span>Tema {theme === 'dark' ? 'claro' : 'escuro'}</span>
+          </button>
         </nav>
         <div className="header-actions">
+          <button className="icon-button theme-toggle theme-toggle-header" type="button" aria-label={`Ativar tema ${nextTheme}`} aria-pressed={theme === 'dark'} title={`Ativar tema ${nextTheme}`} onClick={toggleTheme}>
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+          </button>
           <Link className="search-toggle" to="/#catalogo" onClick={closeMenu}><Icon name="search" /><span>Buscar</span></Link>
           <NotificationBell />
           {user === null

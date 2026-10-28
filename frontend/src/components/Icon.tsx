@@ -4,6 +4,8 @@ export type IconName =
   | 'tune'
   | 'close'
   | 'menu'
+  | 'sun'
+  | 'moon'
   | 'wallet'
   | 'gavel'
   | 'check'
@@ -25,6 +27,8 @@ export default function Icon({ name }: { name: IconName }) {
       {name === 'tune' ? <><path d="M4 6h16M4 12h16M4 18h16" /><path d="M8 4v4M16 10v4M10 16v4" /></> : null}
       {name === 'menu' ? <path d="M3 6h18M3 12h18M3 18h18" /> : null}
       {name === 'close' ? <path d="m6 6 12 12M18 6 6 18" /> : null}
+      {name === 'sun' ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></> : null}
+      {name === 'moon' ? <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z" /> : null}
       {name === 'wallet' ? <><path d="M4 7h15a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a2 2 0 0 1 2-2h12" /><path d="M16 13h1.5" /></> : null}
       {name === 'gavel' ? <><path d="m14 4 6 6M17 7l-7 7M4 20l7-7M12 4l-8 8M9 7l8 8" /></> : null}
       {name === 'check' ? <path d="m4 12 5 5L20 6" /> : null}

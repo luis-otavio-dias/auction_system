@@ -7,6 +7,27 @@
     <meta name="theme-color" content="#FBFBFA" />
     <meta name="description" content="Plataforma de leilões." />
     <title>Leilões — Home</title>
+    <script>
+      (function () {
+        var storedTheme = null
+        try {
+          storedTheme = localStorage.getItem('auction-theme')
+        } catch (error) {
+          // Preferência indisponível: segue a preferência do sistema.
+        }
+        var theme =
+          storedTheme === 'light' || storedTheme === 'dark'
+            ? storedTheme
+            : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        var root = document.documentElement
+        root.dataset.theme = theme
+        root.style.colorScheme = theme
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', theme === 'dark' ? '#131210' : '#fbfbfa')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
