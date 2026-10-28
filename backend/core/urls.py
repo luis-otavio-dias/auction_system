@@ -15,12 +15,28 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path, re_path
+from django.views.static import serve
 
-from core.views import HealthCheckView
+from core.views import HealthCheckView, SettlementHealthView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", HealthCheckView.as_view()),
+    path("health/settlement/", SettlementHealthView.as_view()),
+    path("api/auth/", include("users.urls")),
+    path("api/", include("wallet.urls")),
+    path("api/", include("auctions.urls")),
+]
+
+# O WhiteNoise serve apenas STATIC_ROOT. As imagens cacheadas em MEDIA_ROOT
+# precisam de uma rota explícita para funcionar também com DEBUG=False.
+urlpatterns += [
+    re_path(
+        rf"^{settings.MEDIA_URL.lstrip('/')}(?P<path>.*)$",
+        serve,
+        {"document_root": settings.MEDIA_ROOT},
+    ),
 ]

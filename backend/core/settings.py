@@ -11,10 +11,12 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
 from dj_database_url import DBConfig
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,6 +37,17 @@ SECRET_KEY = os.getenv(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False").lower() in ("true", "1", "t", "yes")
 
+MIN_SECRET_KEY_LENGTH = 50
+if not DEBUG and (
+    SECRET_KEY.startswith("django-insecure-")
+    or len(SECRET_KEY) < MIN_SECRET_KEY_LENGTH
+):
+    message = (
+        "SECRET_KEY deve ser definida com um valor aleatório de pelo menos "
+        f"{MIN_SECRET_KEY_LENGTH} caracteres em produção."
+    )
+    raise ImproperlyConfigured(message)
+
 ALLOWED_HOSTS: list[str] = [
     h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()
 ]
@@ -49,11 +62,19 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "channels",
+    "corsheaders",
+    "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
+    "users",
+    "wallet",
+    "auctions",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -61,6 +82,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+AUTH_USER_MODEL = "users.User"
 
 ROOT_URLCONF = "core.urls"
 
@@ -81,6 +104,62 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
+ASGI_APPLICATION = "core.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "users.authentication.CookieJWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticatedOrReadOnly",
+    ),
+    "DEFAULT_PAGINATION_CLASS": (
+        "rest_framework.pagination.PageNumberPagination"
+    ),
+    "PAGE_SIZE": 20,
+}
+
+ACCESS_TOKEN_LIFETIME = timedelta(minutes=15)
+REFRESH_TOKEN_LIFETIME = timedelta(days=7)
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": ACCESS_TOKEN_LIFETIME,
+    "REFRESH_TOKEN_LIFETIME": REFRESH_TOKEN_LIFETIME,
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+}
+
+# Cookies JWT. Em produção, use AUTH_COOKIE_SECURE=True.
+AUTH_COOKIE_ACCESS_NAME = "access_token"
+AUTH_COOKIE_REFRESH_NAME = "refresh_token"
+AUTH_COOKIE_ACCESS_PATH = "/"
+AUTH_COOKIE_REFRESH_PATH = "/api/auth/"
+AUTH_COOKIE_HTTP_ONLY = True
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "False").lower() in (
+    "true",
+    "1",
+    "t",
+    "yes",
+)
+AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax")
+AUTH_COOKIE_DOMAIN: str | None = os.getenv("AUTH_COOKIE_DOMAIN") or None
+AUTH_COOKIE_ACCESS_MAX_AGE = int(ACCESS_TOKEN_LIFETIME.total_seconds())
+AUTH_COOKIE_REFRESH_MAX_AGE = int(REFRESH_TOKEN_LIFETIME.total_seconds())
+
+# Cache local: o deploy usa uma única instância/processo.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    },
+}
+
 
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
@@ -94,6 +173,12 @@ DATABASE_URL = (
 DATABASES: dict[str, DBConfig] = {
     "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
 }
+if (
+    not DEBUG
+    and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql"
+):
+    message = "PostgreSQL é obrigatório fora do modo DEBUG."
+    raise ImproperlyConfigured(message)
 
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
@@ -117,7 +202,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "pt-br"
 
 TIME_ZONE = "UTC"
 
@@ -150,6 +235,11 @@ STORAGES = {
     },
 }
 
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
@@ -165,3 +255,58 @@ CORS_ALLOWED_ORIGINS: list[str] = [
     for h in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
     if h.strip()
 ]
+
+# Domínio e integridade da aplicação
+BID_HISTORY_SECRET = os.getenv("BID_HISTORY_SECRET", SECRET_KEY)
+RECEIPT_SECRET = os.getenv("RECEIPT_SECRET", SECRET_KEY)
+if not DEBUG and (
+    SECRET_KEY in (BID_HISTORY_SECRET, RECEIPT_SECRET)
+    or BID_HISTORY_SECRET == RECEIPT_SECRET
+):
+    message = (
+        "BID_HISTORY_SECRET e RECEIPT_SECRET devem ser definidos, distintos "
+        "entre si e diferentes de SECRET_KEY em produção."
+    )
+    raise ImproperlyConfigured(message)
+BID_ANCHOR_PATH = os.getenv("BID_ANCHOR_PATH", "")
+CATALOG_PROVIDER = os.getenv("CATALOG_PROVIDER", "artic")
+CATALOG_HTTP_TIMEOUT_SECONDS = float(
+    os.getenv("CATALOG_HTTP_TIMEOUT_SECONDS", "5")
+)
+CATALOG_HTTP_MAX_ATTEMPTS = int(os.getenv("CATALOG_HTTP_MAX_ATTEMPTS", "2"))
+CATALOG_HTTP_BACKOFF_SECONDS = float(
+    os.getenv("CATALOG_HTTP_BACKOFF_SECONDS", "0.2")
+)
+CATALOG_CIRCUIT_THRESHOLD = int(os.getenv("CATALOG_CIRCUIT_THRESHOLD", "3"))
+CATALOG_CIRCUIT_COOLDOWN_SECONDS = int(
+    os.getenv("CATALOG_CIRCUIT_COOLDOWN_SECONDS", "60")
+)
+CATALOG_SEARCH_CACHE_SECONDS = int(
+    os.getenv("CATALOG_SEARCH_CACHE_SECONDS", "300")
+)
+CATALOG_USER_AGENT = os.getenv(
+    "CATALOG_USER_AGENT",
+    "AuctionSystem/0.1 (Art Institute of Chicago catalog integration)",
+)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Liquidação assíncrona
+ENABLE_SETTLEMENT_TICKER = os.getenv(
+    "ENABLE_SETTLEMENT_TICKER", "true"
+).lower() in ("true", "1", "t", "yes")
+SETTLEMENT_INTERVAL_SECONDS = int(
+    os.getenv("SETTLEMENT_INTERVAL_SECONDS", "5")
+)
+SETTLEMENT_BATCH_SIZE = int(os.getenv("SETTLEMENT_BATCH_SIZE", "50"))
+
+# WebSocket
+_ws_allowed_origins_env = [
+    h.strip()
+    for h in os.getenv("WS_ALLOWED_ORIGINS", "").split(",")
+    if h.strip()
+]
+WS_ALLOWED_ORIGINS: list[str] = _ws_allowed_origins_env or CORS_ALLOWED_ORIGINS
+WS_TICKET_MAX_AGE_SECONDS = int(os.getenv("WS_TICKET_MAX_AGE_SECONDS", "60"))
+WS_CONNECTION_MAX_AGE_SECONDS = int(
+    os.getenv("WS_CONNECTION_MAX_AGE_SECONDS", "900")
+)
