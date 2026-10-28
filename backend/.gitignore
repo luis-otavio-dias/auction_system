@@ -17,3 +17,11 @@ wheels/
 *_cache
 
 db.sqlite3
+
+staticfiles/
+
+# Uploaded/downloaded media (MEDIA_ROOT)
+media/
+
+# Local audit anchor checkpoints (BID_ANCHOR_PATH)
+*.jsonl

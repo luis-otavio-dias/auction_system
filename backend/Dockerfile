@@ -49,8 +49,6 @@ ENV PATH="/app/.venv/bin:${PATH}"
 USER python
 WORKDIR /app
 
-RUN python manage.py collectstatic --noinput
-
 COPY --chown=python:python scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
