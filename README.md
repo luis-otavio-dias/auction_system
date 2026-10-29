@@ -1,244 +1,237 @@
-# Auction System
+# Casa de Leilões — Auction System
 
-Plataforma de leilões com API Django/DRF, autenticação por cookies HttpOnly,
-carteiras com saldo comprometido, lances concorrentes, liquidação, recibos,
-auditoria pública e atualizações WebSocket. O frontend React consome a API e
-mantém polling HTTP como recuperação do estado.
+Plataforma de leilões ao vivo para o **Desafio Elite Dev — Verzel**. O leiloeiro
+monta lotes a partir de obras da Art Institute of Chicago; o licitante deposita
+saldo simulado, disputa lotes em tempo real e recebe um comprovante público
+quando arremata. Qualquer pessoa pode auditar o histórico de lances sem login.
 
-## Arquitetura
+**Stack:** React 19 + TypeScript + Vite · Django 6.1 + DRF + Channels ·
+PostgreSQL · WebSocket + polling · HMAC-SHA256.
 
-- `backend/core`: settings, HTTP/ASGI, WebSocket, health checks e ticker de
-  liquidação.
-- `backend/users`: usuário UUID com papel `SELLER`/`BIDDER`, cadastro e JWT.
-- `backend/wallet`: carteira Decimal e livro-razão append-only.
-- `backend/auctions`: catálogo AIC, lotes, lances encadeados, liquidação,
-  comprovantes, auditoria, âncora e consumers.
-- `frontend`: SPA React/TypeScript integrada à API, com WebSocket e polling.
-- `docs/fases`: critérios de aceite; `docs/implemented`: registros de entrega.
+## Aplicação publicada
 
-Dependência de domínio: `users` não depende das outras apps; `wallet` depende
-de `users`; `auctions` chama serviços de `wallet`; `core` conecta os serviços.
-
-## Requisitos e setup local
-
-- Python 3.14+, `uv` e PostgreSQL 18+.
-- Node.js/npm para o frontend.
-- Docker Compose é opcional para executar PostgreSQL e backend.
-
-```sh
-cd backend
-cp .env.example .env
-# Edite credenciais, SECRET_KEY e segredos HMAC independentes.
-uv sync
-uv run python manage.py migrate
-uv run python manage.py seed_demo
-uv run python manage.py collectstatic --noinput
-uv run uvicorn core.asgi:application --reload --port 8001
-```
-
-A API fica em `http://localhost:8001`; o frontend de desenvolvimento usa
-`http://localhost:5173`. PostgreSQL é obrigatório para produção e para validar
-concorrência e locks. O SQLite pode ser usado apenas para desenvolvimento sem
-testes de concorrência. Em ambiente `DEBUG=False`, SQLite é recusado.
-
-## Docker Compose
-
-O compose do backend está em `backend/docker-compose.yaml`:
-
-```sh
-cd backend
-cp .env.example .env
-# Configure POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB e segredos.
-docker compose -f docker-compose.yaml up --build
-```
-
-O banco tem health check `pg_isready`; o backend executa migrations pelo
-`scripts/entrypoint.sh` e expõe `/health/` para o health check do container.
-O backend escuta na porta 7860 dentro do container e é publicado em 8001 no
-host. O servidor ASGI precisa manter upgrade WebSocket habilitado.
-
-## Variáveis de ambiente
-
-Veja [`backend/.env.example`](backend/.env.example). As principais variáveis:
-
-| Variável | Uso |
+| Recurso | Endereço |
 |---|---|
-| `SECRET_KEY` | assinatura interna Django e tickets WS |
-| `DEBUG`, `ALLOWED_HOSTS` | modo e hosts Django |
-| `DATABASE_URL` ou `POSTGRES_URL` | conexão PostgreSQL; `DATABASE_URL` tem prioridade |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Compose |
-| `CORS_ALLOWED_ORIGINS` | origens HTTP do frontend |
-| `WS_ALLOWED_ORIGINS` | allowlist do handshake WebSocket; fallback para CORS |
-| `AUTH_COOKIE_SECURE`, `AUTH_COOKIE_SAMESITE`, `AUTH_COOKIE_DOMAIN` | cookies JWT |
-| `BID_HISTORY_SECRET`, `RECEIPT_SECRET` | HMAC da cadeia e dos recibos; distintos e estáveis |
-| `BID_ANCHOR_PATH` | arquivo JSONL append-only de checkpoint externo |
-| `ENABLE_SETTLEMENT_TICKER` | liga/desliga ticker no lifespan ASGI |
-| `SETTLEMENT_INTERVAL_SECONDS`, `SETTLEMENT_BATCH_SIZE` | frequência e limite por ciclo |
-| `WS_TICKET_MAX_AGE_SECONDS`, `WS_CONNECTION_MAX_AGE_SECONDS` | validade do ticket e conexão |
-| `CATALOG_*` | timeout/retry/cache do provedor Art Institute of Chicago |
-| `FRONTEND_URL` | links compartilháveis de recibo |
+| Aplicação | https://auction-system-neon.vercel.app |
+| API | https://api--auction-system-backend--cg7yjzmmcfrl.code.run/api |
+| Health check | https://api--auction-system-backend--cg7yjzmmcfrl.code.run/health/ |
+| Repositório | https://github.com/luis-otavio-dias/auction_system |
 
-Em produção, configure valores aleatórios fortes para `SECRET_KEY` e para cada
-segredo HMAC; o app recusa segredos HMAC iguais entre si ou ao `SECRET_KEY`.
-Use HTTPS, `AUTH_COOKIE_SECURE=True`, origens exatas, volume persistente para a
-âncora e storage de mídia persistente. O arquivo de âncora ausente ou atrasado
-é informado como limitação e não como adulteração.
+## Como testar
 
-## Migrations e dados de demonstração
+1. Abra https://auction-system-neon.vercel.app.
+2. Entre como `cliente1@demo.com` / `demo-password-123`.
+3. Abra o lote **ao vivo** na vitrine e dê o lance exato exibido em
+   “Próximo lance exato”.
+4. Em uma janela anônima, entre como `cliente2@demo.com` e cubra o lance com o
+   próximo incremento. A primeira janela deve mostrar **“Você foi superado”**
+   sem recarregar a página.
+5. Confira a **carteira** (saldo total, comprometido e disponível), o
+   **histórico público**, a **auditoria** do lote e, em **Meus arremates** do
+   `cliente2`, o comprovante do lote encerrado que já vem no seed.
+6. Saia e entre como `leiloeiro@demo.com` para abrir o **painel do leiloeiro**:
+   buscar na AIC, criar um lote, cancelar um lote sem lances e ver o total
+   recebido e o resultado por lote.
 
-```sh
-cd backend
-uv run python manage.py migrate
-uv run python manage.py makemigrations --check --dry-run
-uv run python manage.py seed_demo
-uv run python manage.py seed_demo --new-live
-uv run python manage.py seed_demo --reset
-```
+### Contas de demonstração
 
-O seed usa os serviços de domínio para gerar reservas, cadeia, lances e
-comprovante sem chamadas externas. Cria um leiloeiro, dois licitantes, depósitos,
-um lote ao vivo com pelo menos dois lances, um agendado e um encerrado com
-recibo. `--new-live` adiciona outro lote sem alterar os históricos; `--reset`
-remove lotes/lançamentos dos usuários de demonstração e reconstrói os dados.
-
-Credenciais locais padrão (altere `DEMO_PASSWORD` antes de disponibilizar uma
-instância):
-
-| Papel | Email | Senha padrão |
+| Papel | E-mail | Senha |
 |---|---|---|
 | Leiloeiro | `leiloeiro@demo.com` | `demo-password-123` |
 | Licitante | `cliente1@demo.com` | `demo-password-123` |
 | Licitante | `cliente2@demo.com` | `demo-password-123` |
 
-## Autenticação e cookies
+O seed deixa um lote **ao vivo com dois lances**, um **agendado** e um
+**encerrado com comprovante**. O lote ao vivo nasce com duração de três dias; se
+ele já tiver expirado no ambiente publicado, crie outro pelo painel do leiloeiro
+ou execute `seed_demo --new-live` em um ambiente local.
 
-- `POST /api/auth/register`: cadastro com email, senha, papel e alias opcional.
-- `POST /api/auth/token/`: login; cookies `access_token` e `refresh_token`
-  HttpOnly.
-- `POST /api/auth/refresh/`: renova access e rotaciona refresh.
-- `POST /api/auth/logout/`: blacklista refresh e limpa cookies.
-- `GET /api/auth/me/`: dados privados da conta autenticada.
-- `POST /api/auth/ws-ticket`: emite ticket assinado, curto e de uso WS; JWT não
-  é colocado na URL.
+## O que está pronto
 
-Access dura 15 minutos, refresh 7 dias, com rotação e blacklist do SimpleJWT.
-Para origens diferentes em produção, configure `SameSite=None`, `Secure=True`
-e proteção CSRF nos endpoints de escrita; mantenha CORS limitado às origens do
-frontend. O header Bearer é aceito como fallback para clientes de API.
+| Requisito do desafio | Implementação |
+| --- | --- |
+| Dois papéis de usuário | Leiloeiro (`SELLER`) e licitante (`BIDDER`), com cadastro e login |
+| Vitrine de lotes | Abas ao vivo, agendados e encerrados; cancelados ficam fora da listagem |
+| Painel do leiloeiro | Busca na Art Institute of Chicago, criação, cancelamento sem lances e resultados |
+| Sala ao vivo | Lance atual, histórico, posição e contagem regressiva; WebSocket e polling |
+| Carteira | Depósito simulado, saldo total, comprometido, disponível e extrato |
+| Meus arremates | Participações, lotes vencidos e comprovante compartilhável |
+| Auditoria pública | Histórico de lances e verificação da cadeia SHA-256 + HMAC-SHA256 |
+| Regras de lance | Valor exato, saldo disponível, restrição de papel e líder sem cobrir o próprio lance |
+| Anti-sniping e liquidação | Prorrogação de dois minutos, débito do vencedor e crédito do leiloeiro |
+| Privacidade | Aliases públicos em histórico, auditoria e comprovantes |
+| Indisponibilidade da API externa | Catálogo persistido, cache e fallback local |
+| Dados de teste | Um leiloeiro, dois licitantes e lotes em diferentes estados |
 
-## Endpoints
+Opcionais implementados: busca e filtros, Docker Compose, testes automatizados
+e tema claro/escuro. O cancelamento é permitido somente antes do primeiro lance;
+portanto, não há saldo comprometido a estornar nesse fluxo. Cancelamento de lote
+com lances e estorno não foi implementado.
 
-Todos os valores monetários são `Decimal(12,2)` no banco e strings decimais na
-API. Respostas públicas usam aliases e nunca incluem email, nome ou UUID de
-usuário.
+## Como rodar
 
-| Método e rota | Acesso | Descrição |
-|---|---|---|
-| `GET /api/lots` | público | vitrine paginada, filtros e ordenação |
-| `GET /api/lots/{id}` | público/autenticado | detalhe, versão e posição pessoal |
-| `POST /api/lots` | leiloeiro | cria lote de item do catálogo |
-| `POST /api/lots/{id}/cancel` | leiloeiro dono | cancela lote sem lances |
-| `POST /api/lots/{id}/bids` | licitante | tenta um lance idempotente |
-| `GET /api/lots/{id}/bids` | público | histórico paginado; `is_mine` só autenticado |
-| `GET /api/me/bids` | licitante | lances próprios |
-| `GET /api/wallet` | autenticado | saldo, comprometido e disponível |
-| `POST /api/wallet/deposits` | licitante | depósito simulado idempotente |
-| `GET /api/wallet/transactions` | licitante | livro-razão privado |
-| `GET /api/seller/lots` | leiloeiro | próprios lotes e liquidação sob demanda |
-| `GET /api/seller/summary` | leiloeiro | total recebido, lotes sem venda e bloqueios |
-| `GET /api/me/wins` | licitante | arremates e tokens de recibo |
-| `GET /api/receipts/{token}` | público | comprovante imutável sem PII |
-| `GET /api/lots/{id}/audit` | público | cadeia, falhas e estado da âncora |
-| `GET /api/receipts/{token}/verify` | público | HMAC do recibo e vínculo à cadeia |
-| `GET /health/` | público/ops | disponibilidade HTTP |
-| `GET /health/settlement/` | público/ops | estado local do ticker |
+Requisitos: Docker com Compose, Node.js 24+ e npm. O Compose sobe PostgreSQL e
+backend; o frontend roda separadamente.
 
-Catálogo para leiloeiros: `GET /api/catalog/search?q=` e
-`GET /api/catalog/items/{id}`. WebSockets: `/ws/lots/{id}/` (público, com
-posição pessoal quando o ticket é válido) e `/ws/notifications/` (ticket
-obrigatório). O frontend usa polling HTTP como fallback.
+1. Siga a [configuração do backend](backend/README.md#subir-com-docker-recomendado)
+   para criar o `.env`, gerar segredos, subir os serviços e semear o banco.
+2. Em outro terminal, a partir da raiz do repositório:
 
-## Regras financeiras e de lance
+   ```sh
+   cd frontend
+   npm ci
+   npm run dev
+   ```
 
-O lote precisa estar ao vivo; apenas `BIDDER` pode participar, nunca o
-leiloeiro ou o líder atual. O valor aceito é exatamente o lance inicial ou o
-lance atual mais o incremento. `Lot` é bloqueado primeiro; carteiras do
-licitante e do líder são bloqueadas por chave primária. O horário é capturado
-depois dos locks. O hold aumenta `committed`; quando há novo líder, o hold
-anterior é liberado na mesma transação. A liquidação valida cadeia, estado e
-reserva antes de debitar vencedor e creditar leiloeiro.
+3. Abra `http://localhost:5173`. A API fica em `http://localhost:8001`.
 
-Idempotência por `(lot, bidder, client_bid_id)` retorna o lance original sem
-efeitos extras; chave com valor diferente retorna `IDEMPOTENCY_KEY_REUSED`.
-Erros de regra incluem `LOT_NOT_STARTED`, `LOT_ENDED`, `LOT_CANCELLED`,
-`LOT_SETTLED`, `BID_AMOUNT_MISMATCH`, `BID_BELOW_MINIMUM`, `ALREADY_LEADING`,
-`INSUFFICIENT_FUNDS`, `SELLER_CANNOT_BID` e `FORBIDDEN_ROLE`.
+Para executar sem Docker, consulte o [backend](backend/README.md#executar-sem-docker).
+Variáveis e publicação estão nos guias do [backend](backend/README.md#publicar-no-northflank)
+e do [frontend](frontend/README.md#publicar-na-vercel).
 
-Anti-sniping: lance feito estritamente dentro dos últimos 2 minutos define
-`ends_at = max(ends_at, now + 2 minutos)`; no limite exato de 2 minutos não há
-extensão. Cada mutação relevante incrementa `state_version`.
+## Stack e por quê
 
-## Liquidação e recibos
+| Escolha | Motivo |
+|---|---|
+| **React 19 + TypeScript + Vite** | SPA com rotas, tipagem estrita e build rápido; o cliente HTTP valida os contratos da API com decoders |
+| **Django 6.1 + DRF** | ORM maduro, admin, migrations e uma camada de serviços explícita para as regras de leilão |
+| **PostgreSQL 18** | `SELECT … FOR UPDATE`, constraints e transações reais: necessários para concorrência de lances e liquidação |
+| **SimpleJWT em cookies HttpOnly** | O JavaScript não lê o token; refresh com rotação e blacklist; Bearer aceito como fallback de API |
+| **Channels + `InMemoryChannelLayer`** | WebSocket sem infraestrutura extra no deploy de uma instância; polling cobre indisponibilidade |
+| **Art Institute of Chicago** | API pública, com imagens e atributos de obras; o seed usa fixtures locais para não depender dela |
+| **pytest + Vitest + Testing Library** | Testes de domínio, API, componentes e concorrência com PostgreSQL real |
+| **Docker Compose** | Sobe PostgreSQL e backend com migrations e health checks; o frontend roda com Vite |
 
-O ticker ASGI inicia no lifespan, processa um lote limitado na inicialização e
-em intervalos, trata lotes em transações separadas e cancela limpo no shutdown.
-`settle_if_due` atende leituras de detalhe, auditoria e painéis. A liquidação
-também pode ser executada por `uv run python manage.py close_due_lots --once`.
-`ENABLE_SETTLEMENT_TICKER=False` desliga o loop. Se o servidor estiver suspenso,
-a liquidação aguarda retorno do processo ou acesso ao lote.
+## Arquitetura
 
-Lote sem lances encerra sem recibo; lote cancelado não liquida. Inconsistências
-preenchem `settlement_error`/`settlement_checked_at`, bloqueiam repetição
-automática e não movimentam dinheiro. Comprovantes mantêm snapshots e HMAC,
-sem identificação privada.
+```text
+backend/
+├── core/       settings, ASGI, health checks, ticker de liquidação
+├── users/      usuário UUID, papéis, cadastro, JWT em cookie e ticket WS
+├── wallet/     carteira Decimal, holds, extrato append-only e depósitos
+├── auctions/   catálogo AIC, lotes, lances, liquidação, recibos e auditoria
+└── tests/      domínio, API, concorrência, WebSocket e seed
 
-## Auditoria e garantias
+frontend/
+├── src/api/         cliente HTTP, refresh, decoders e serviços tipados
+├── src/pages/       vitrine, sala, carteira, painel, arremates, auditoria, recibo
+├── src/hooks/       sala do lote e countdown sincronizado com o servidor
+├── src/context/     sessão, tema, notificações e toasts
+├── src/domain/      regras de estado, versão do lote e mensagens de erro
+└── src/components/  layout e UI compartilhada
 
-O payload de cada lance é JSON canônico com chaves ordenadas, separadores fixos,
-valores monetários com duas casas e timestamps UTC com microssegundos. A cadeia
-usa `content_hash = SHA-256(payload)` e
-`hash = HMAC-SHA256(BID_HISTORY_SECRET, prev_hash + ':' + content_hash)`. O
-backend confere sequência, elo anterior, payload, HMAC, contagem, head e âncora.
-Após commit, um checkpoint JSONL pode ser acrescentado em `BID_ANCHOR_PATH`.
+docs/              requisitos, plano e relatórios de cada fase
+```
 
-O endpoint entrega a verificação feita pelo backend; HMAC não permite
-verificação independente pelo visitante. Âncora local protege contra alteração
-limitada ao banco, não contra controle do servidor. Sem âncora, ou quando ela
-está atrasada, a resposta informa `unavailable`/`behind` sem classificar como
-adulteração. Um checkpoint externo confiável, object lock ou log independente é
-necessário para uma garantia forte contra rollback completo.
+Fluxo de uma requisição:
 
-## Deploy e limitações operacionais
+```text
+React → cliente HTTP tipado → API Django/DRF → serviço de domínio → PostgreSQL
+                                  │
+                                  ├─ transaction.on_commit → WebSocket
+                                  └─ transaction.on_commit → âncora de auditoria
+```
 
-O deploy demonstrativo usa uma instância e um processo ASGI, PostgreSQL,
-`InMemoryChannelLayer`, ticker e storage persistente configurado pelo operador.
-A camada Channels em memória não compartilha eventos entre workers; use uma
-instância/processo ou adicione Redis com `channels-redis`. O polling recupera o
-estado do lote, mas notificações transitórias podem se perder. Configure proxy
-com suporte a WebSocket, HTTPS e disco persistente para uploads/âncoras.
+Dependências de domínio: `users` não depende das outras apps; `wallet` depende
+de `users`; `auctions` usa os serviços de `wallet`; `core` conecta os serviços.
 
-## Testes e qualidade
+### Decisões que sustentam as regras
 
-Execute de `backend/`:
+- **Locks determinísticos:** o lote é bloqueado primeiro; as carteiras do
+  licitante e do líder são bloqueadas por chave primária. O relógio é lido
+  depois dos locks.
+- **Dinheiro:** `Decimal(12,2)` no banco; a API devolve strings decimais para
+  não perder precisão no JavaScript.
+- **Idempotência:** `(lot, bidder, client_bid_id)` devolve o lance original com
+  `200 OK` e `Idempotent-Replayed: true`; a mesma chave com outro valor retorna
+  `IDEMPOTENCY_KEY_REUSED`.
+- **Reconciliação em tempo real:** cada mutação incrementa `Lot.state_version`.
+  O cliente descarta versões antigas, detecta saltos e busca um snapshot HTTP.
+- **Efeitos externos após commit:** broadcasts e âncoras só disparam em
+  `transaction.on_commit`, evitando anunciar algo que sofreu rollback.
+
+## Testes
+
+No backend, com PostgreSQL configurado e dependências instaladas:
 
 ```sh
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy .
-uv run python manage.py check
-uv run python manage.py makemigrations --check --dry-run
-uv run python manage.py migrate
+cd backend
 uv run pytest
 ```
 
-Testes de concorrência usam PostgreSQL com conexões reais e verificam locks e
-liquidação idempotente. Os testes cobrem regras/limites anti-sniping, hold e
-release, adulteração da cadeia, recibo, âncora, ticket/origem, broadcast após
-commit e supressão após rollback.
+No frontend:
+
+```sh
+cd frontend
+npm run lint
+npm run test:run
+npm run build
+```
+
+Com o backend local em execução e o seed aplicado:
+
+```sh
+cd frontend
+E2E_API_URL=http://127.0.0.1:8001 npm run test:e2e
+```
+
+O smoke E2E exercita login, carteira, lances, notificações, anti-sniping,
+liquidação, comprovante e auditoria por meio das APIs públicas. Ele cria dados e
+movimenta saldo simulado; execute em um banco de desenvolvimento.
+
+Os workflows em [`.github/workflows/`](.github/workflows/) executam os checks de
+cada componente. O backend inclui testes de concorrência com PostgreSQL real.
+
+## Limitações e comportamentos conhecidos
+
+- **Tempo real:** o channel layer é em memória e exige um único processo web.
+  A sala consulta o estado por HTTP a cada quatro segundos para recuperar eventos
+  perdidos. Escalar exige um channel layer compartilhado, como Redis.
+- **Liquidação:** o ticker roda no processo ASGI. Com a aplicação parada, o
+  encerramento aguarda a retomada ou uma leitura que dispare a liquidação.
+- **Auditoria:** o HMAC é verificado pelo backend. A âncora JSONL opcional requer
+  armazenamento persistente; proteção contra controle total do servidor exige
+  um checkpoint externo confiável. Veja as [garantias e limites](backend/README.md#integridade-do-histórico).
+- **Sessão entre sites:** o deploy Vercel/Northflank usa cookies de terceiros.
+  Políticas do navegador podem bloqueá-los mesmo com os atributos corretos.
+- **Imagens:** arquivos baixados para `MEDIA_ROOT` precisam de disco persistente;
+  falhas de imagem remota exibem um placeholder.
+- **Demonstração:** o lote ao vivo do seed dura três dias. Depois, crie outro no
+  painel ou execute `seed_demo --new-live` em desenvolvimento.
+- **Escopo:** depósitos são simulados. Não há cobrança real, nota fiscal,
+  revenda, aplicativo nativo, recuperação de senha ou upload de imagem própria.
+
+## Documentação
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| [Backend](backend/README.md) | Configuração, banco, API, regras, auditoria e publicação |
+| [Frontend](frontend/README.md) | Execução, telas, integração e publicação |
+| [Enunciado](docs/Teste%20tecnico%20Elite%20Dev%20-%20Verzel.md) | Requisitos do desafio |
+| [Fases](docs/fases/README.md) | Critérios de aceite |
+| [Relatórios](docs/implemented/) | Registro de entregas |
 
 ## Uso de IA
 
-Ferramentas de IA foram usadas como apoio de implementação, revisão e geração de
-testes e documentação. Decisões de domínio, integração, validação e execução dos
-comandos de qualidade foram conferidas no repositório; limitações operacionais
-e de auditoria estão registradas acima.
+A IA foi usada como apoio em todo o ciclo, com decisão e validação humanas: cada
+entrega foi revisada contra o enunciado e coberta por testes.
+
+No visual, o **Stitch** serviu de protótipo: gerei versões sucessivas das telas
+e iterei sobre os resultados até chegar à interface final. A primeira versão
+está registrada em
+[docs/assets/stitch-primeira-tela.png](docs/assets/stitch-primeira-tela.png).
+
+Na arquitetura do sistema, a IA auxiliou no levantamento de requisitos, na
+modelagem do banco e na organização dos módulos (`users`, `wallet`,
+`auctions`, `core`), além de mapear riscos e as
+[limitações conhecidas](#limitações-e-comportamentos-conhecidos).
+
+Na documentação, o planejamento foi quebrado em fases isoladas com critérios de
+aceite em [`docs/fases`](docs/fases/README.md), e a conclusão de cada etapa fica
+registrada em [`docs/implemented`](docs/implemented/). Os
+[próximos passos](docs/proximos-passos.md) foram definidos a partir do que
+ficou fora do escopo inicial e do que seria necessário para escalar a
+aplicação.
+
+No desenvolvimento, usei o **Orca ADE** para orquestrar agentes de IA e o
+**Zed** como editor de código.
