@@ -11,10 +11,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from asgiref.sync import sync_to_async
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.security.websocket import (
-    AllowedHostsOriginValidator,
-    OriginValidator,
-)
+from channels.security.websocket import OriginValidator
 from django.conf import settings
 from django.core.asgi import get_asgi_application
 from django.core.cache import cache
@@ -66,24 +63,38 @@ class TickerModule(Protocol):
     def tick(self) -> int: ...
 
 
-def _load_application() -> ASGI3Application:
+def build_websocket_application() -> ASGI3Application:
+    """Monta o WebSocket lendo as origens permitidas na chamada.
+
+    A validação usa apenas ``WS_ALLOWED_ORIGINS``. Não usamos
+    ``AllowedHostsOriginValidator``: ``ALLOWED_HOSTS`` descreve o host da API,
+    enquanto o navegador envia o host do frontend no cabeçalho ``Origin``.
+    Em deploys com frontend e API em domínios distintos, como Vercel e
+    Northflank, aquele validador recusaria uma origem explicitamente liberada
+    em ``WS_ALLOWED_ORIGINS`` e o handshake terminaria em 403.
+    """
     routes = cast(
         "RoutingModule", import_module("auctions.routing")
     ).websocket_urlpatterns
     middleware_module = cast("WsAuthModule", import_module("auctions.ws_auth"))
-    websocket = AllowedHostsOriginValidator(
-        OriginValidator(
-            middleware_module.WsTicketMiddleware(URLRouter(routes)),
-            settings.WS_ALLOWED_ORIGINS,
-        )
+    return OriginValidator(
+        middleware_module.WsTicketMiddleware(URLRouter(routes)),
+        settings.WS_ALLOWED_ORIGINS,
     )
+
+
+def build_application() -> ASGI3Application:
+    """Monta o roteador ASGI HTTP/WebSocket."""
     protocol_router = ProtocolTypeRouter(
-        {"http": django_application, "websocket": websocket}
+        {
+            "http": django_application,
+            "websocket": build_websocket_application(),
+        }
     )
     return cast("ASGI3Application", protocol_router)
 
 
-protocol_application = _load_application()
+protocol_application = build_application()
 ticker = cast("TickerModule", import_module("core.settlement_ticker"))
 
 

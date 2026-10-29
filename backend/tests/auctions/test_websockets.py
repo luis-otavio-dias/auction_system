@@ -21,7 +21,7 @@ from auctions.models import Lot
 from auctions.services.bidding import place_bid
 from auctions.services.lots import cancel_lot
 from auctions.services.settlement import settle_lot
-from core.asgi import _lifespan, application
+from core.asgi import _lifespan, application, build_websocket_application
 from users.models import User
 from wallet.models import Wallet
 
@@ -386,5 +386,38 @@ def test_disallowed_websocket_origin_is_rejected(lot) -> None:
         )
         connected, _close_code = await communicator.connect()
         assert not connected
+
+    async_to_sync(run)()
+
+
+def test_allowed_websocket_origin_does_not_need_to_match_allowed_hosts(
+    lot,
+) -> None:
+    """Frontend e API em domínios distintos não devem gerar 403.
+
+    ALLOWED_HOSTS lista o host da API; o navegador envia o host do frontend
+    em Origin. A origem liberada em WS_ALLOWED_ORIGINS deve ser suficiente.
+    """
+
+    async def run() -> None:
+        with override_settings(
+            ALLOWED_HOSTS=["api.auction.example"],
+            WS_ALLOWED_ORIGINS=["https://frontend.auction.example"],
+        ):
+            websocket = build_websocket_application()
+            communicator = WebsocketCommunicator(
+                websocket,
+                f"/ws/lots/{lot.pk}/",
+                headers=[(b"origin", b"https://frontend.auction.example")],
+            )
+            connected, _subprotocol = await communicator.connect()
+            assert connected
+            try:
+                snapshot = cast(
+                    "EventPayload", await communicator.receive_json_from()
+                )
+                assert snapshot["event"] == "lot.snapshot"
+            finally:
+                await communicator.disconnect()
 
     async_to_sync(run)()
